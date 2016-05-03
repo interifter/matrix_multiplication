@@ -9,26 +9,24 @@
 #pragma once
 #ifndef SQMATRIX_H
 #define SQMATRIX_H
+#include <thread>;
 
 class SquareMatrix {
 	//double* arr;
 	int size;
+	std::thread* threadpool;
+
 public:
-	//SquareMatrix(double*, int);
-	//SquareMatrix(int);
 	SquareMatrix();
 	~SquareMatrix();
-	//double* GetArray();
-	int GetDimension();
 
-	//double* Multiply(double*, int);
-	//double* Power(int p);
-	//SquareMatrix Copy();
+	int GetDimension();
 	double* Copy(double*, int);
 	double* Multiply(double*, double*, int);
+	double* MMultiply(double*, double*, int);
 	double* Power(double*, int, int);
+	double* MPower(double*, int, int);
 	double* Generate(int);
-	//void Print();
 	void Print(double*, int);
 
 };

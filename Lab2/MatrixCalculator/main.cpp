@@ -16,36 +16,183 @@
 #include <chrono>
 #include <fstream>
 #include "SquareMatrix.h"
+#include "Matrix.h"
+#include <Windows.h>
 
-void CompareMatrices(double*, double*);
+
 void RunPerfTest();
-void RunPerfMatrix();
+
 void RunPerfPower();
-void RunTest();
+void MatrixMultAccuracyTest();
+void CompareMatrices(double*, double**, int);
+void MatrixPowerPerfAnalysis(long long);
 void RunInteractive();
-void ShowHelp();
-int GetIntegerInput(int, int, char, char*);
+int GetIntegerInput(int min, int max, char var, char* message);
 double *GenerateArrayFromUserInput(int m, SquareMatrix* SMp);
-double* PowerArrayFromUserInput(double*, int, int, SquareMatrix*);
+double* PowerArrayFromUserInput(double* a, int m, int k, SquareMatrix* SMp);
+
+void MatrixPowerPerfAnalysis(long long max_mem_bytes) {
+	long long max_mem_2 = max_mem_bytes / 2;
+	Matrix m1 = Matrix(max_mem_2);
+
+	printf("\r\nMaximum Matrix size with %fMB available: %ix%i\r\n\r\n", max_mem_bytes / 1024.0, m1.GetDimension(), m1.GetDimension());
+
+	time_t t = time(0);   // get time now
+	struct tm * now = localtime(&t);
+	std::string str;
+	str.append("SquareMatrix_PerfAnalysis");
+	std::ostringstream buf;
+	buf << str << (now->tm_year + 1900);
+	buf << std::setfill('0') << std::setw(2) << now->tm_mon;
+	buf << std::setfill('0') << std::setw(2) << now->tm_mday;
+	buf << std::setfill('0') << std::setw(2) << now->tm_hour;
+	buf << std::setfill('0') << std::setw(2) << now->tm_min;
+	buf << std::setfill('0') << std::setw(2) << now->tm_sec;
+	buf << ".csv";
+	str = buf.str();
+	buf.clear();
+	std::ofstream myfile;
+	myfile.open(str);
+	myfile << "Matrix Dim,Power,Ser Elapsed Time,Ser Mult Time,Ser MatMult Time,Ser MatrMult Count,Par Elapsed Time,Par Mult Time,Par MatMult Time,Par MatrMultCount,Par WaitTime,Par WaitCount\n";
+	int max = m1.GetDimension();
+	m1.~Matrix();
+	for (int i = 20; i < 10000;) {
+		for (int j = 100; j <= 1000; j+=100) {
+			myfile << j;
+			myfile << ",";
+			myfile << i;
+			myfile << ",";
+			Matrix m2 = Matrix(j);
+
+
+			printf("\r\nRunning Serial %ix%i Matrix Power(%i)\r\n", j, j, i);
+			double** m1R = m2.Power(i);
+			
+			printf("Elapsed time: %f Milliseconds\r\n", m2.GetElapsedPowerMill());
+			myfile << m2.GetElapsedPowerMill();
+			myfile << ",";
+			myfile << m2.GetElapsedMultMill();
+			myfile << ",";
+			myfile << m2.GetElapsedMatrMultMill();
+			myfile << ",";
+			myfile << m2.GetMatrMultCount();
+			myfile << ",";
+
+			printf("\r\nRunning Parallel %ix%i Matrix ConcurrentPower(%i)\r\n", j, j, i);
+			m2.ClearMeasurements();
+			m1R = m2.ConcurrentPower(i);
+			printf("Elapsed time: %f Milliseconds\r\n", m2.GetElapsedPowerConcMill());
+			myfile << m2.GetElapsedPowerConcMill();
+			myfile << ",";
+			myfile << m2.GetElapsedMultConcMill();
+			myfile << ",";
+			myfile << m2.GetElapsedMatrMultConcMill();
+			myfile << ",";
+			myfile << m2.GetMatrMultConcCount();
+			myfile << ",";
+			myfile << m2.GetElapsedWaitMill();
+			myfile << ",";
+			myfile << m2.GetWaitCount();
+			myfile << "\n";
+			myfile.flush();
+		}
+		
+		myfile.flush();
+		if (i <= 25) {
+			i += 5;
+		}
+		else if (i <= 100) {
+			i += 10;
+		}
+		else {
+			i += 100;
+		}
+	}
+
+	myfile.flush();
+
+}
+
+void MatrixMultAccuracyTest() {
+	int count = 9;
+	int index = 0;
+	double test[9] = { 3, -2, 3, 4, 3, 1, 35, 5, 7 };
+	double soluMatrix2[9] = { 106, 3, 28, 59, 6, 22, 370, -20, 159 };
+	double soluMatrix3[9] = { 1310, -63, 517, 971, 10, 337, 6595, -5, 2203 };
+	printf("Base Test Matrix: ");
+
+	for (int i = 0; i < 9; i++) {
+		printf("%f ", test[i]);
+	}
+	printf("\r\n");
+	Matrix sm = Matrix(test, 3);	//Serial Matrix.
+	Matrix pm = Matrix(test, 3);	//Parallel Matrix.
+
+	double** smRof2 = sm.Power(2);
+	double** pmRof2 = pm.ConcurrentPower(2);
+	printf("\r\nSerial Matrix Power(2) Results\r\n");
+	CompareMatrices(soluMatrix2, smRof2, 3);
+	printf("\r\nConcurrent Matrix Power(2) Results\r\n");
+	CompareMatrices(soluMatrix2, pmRof2, 3);
+
+
+	double** smRof3 = sm.Power(3);
+	double** pmRof3 = pm.ConcurrentPower(3);
+	printf("\r\nSerial Matrix Power(3) Results\r\n");
+	CompareMatrices(soluMatrix3, smRof3, 3);
+	printf("\r\nConcurrent Matrix Power(3) Results\r\n");
+	CompareMatrices(soluMatrix3, pmRof3, 3);
+}
+
+void CompareMatrices(double* expected, double** actual, int d) {
+	//*(arr1d + i * d + j);
+	for (int i = 0; i < d; i++) {
+		for (int j = 0; j < d; j++) {
+			double expectedValue = *(expected + i * d + j);
+			double actual__Value = *(*(actual + i) + j);
+
+			if (expectedValue != actual__Value) {
+				printf("**ERR** Expected: %f. Actual: %f\r\n", expectedValue, actual__Value);
+			}
+			else {
+				printf("*PASS* %f == %f\r\n", expectedValue, actual__Value);
+			}
+		}
+	}
+}
+
 
 int main(int argc, char* argv[]) {
+	MatrixMultAccuracyTest();
+	/*
+	MEMORYSTATUSEX status;
+	status.dwLength = sizeof(status);
+	GlobalMemoryStatusEx(&status);
+	long long mem = status.ullAvailPhys;
+	MatrixPowerPerfAnalysis(mem);
 
+*/
+	
+	
 	if (argc > 2 && std::string(argv[1]) == "-rt") {
 		if (std::string(argv[2]) == "perftest") {
 			RunPerfTest();
 		}
 		else if (std::string(argv[2]) == "test") {
-			RunTest();
+			//RunTest();
 		}
 		else if (std::string(argv[2]) == "manual") {
 			RunInteractive();
 		}
+		else if (std::string(argv[2]) == "mtest") {
+			//RunMultithreadTest();
+		}
 		else {
-			ShowHelp();
+			//ShowHelp();
 		}
 	}
 	else {
-		ShowHelp();
+		//ShowHelp();
 	}
 
 
@@ -110,13 +257,13 @@ int GetIntegerInput(int min, int max, char var, char* message) {
 	int valid = 0;
 	int temp = 0;
 	while (!valid) {
-		
+
 		std::printf("%s (%c): ", message, var);
 		if (std::cin >> temp) {
 			if (temp < 1 || temp > max) {
 				printf("Invalid Input for %c. Expectation is an integer from %i-%i.\r\n", var, min, max);
 				std::cin.clear();
-				std::cin.ignore(std::numeric_limits<std::streamsize> ::max(), '\n');
+				//std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 			}
 			else {
 				valid = 1;
@@ -126,7 +273,7 @@ int GetIntegerInput(int min, int max, char var, char* message) {
 		{
 			printf("Invalid Input for %c. Expectation is an integer from %i-%i.\r\n", var, min, max);
 			std::cin.clear();
-			std::cin.ignore(std::numeric_limits<std::streamsize> ::max(), '\n');
+			//std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 		}
 
 	}
@@ -134,95 +281,6 @@ int GetIntegerInput(int min, int max, char var, char* message) {
 	return temp;
 }
 
-
-void ShowHelp() {
-	printf("Please use -rt [test|perftest|manual].\r\n");
-	printf("Note: perftest does not print any results and runs for hours. Results are stored in a timestamped CSV.");
-}
-
-void RunTest() {
-	double test[9] = { 3, -2, 3, 4, 3, 1, 35, 5, 7 };
-	double soluMatrix2[9] = { 106, 3, 28, 59, 6, 22, 370, -20, 159 };
-	double soluMatrix3[9] = { 1310, -63, 517, 971, 10, 337, 6595, -5, 2203 };
-
-	SquareMatrix sq1 = SquareMatrix{};
-	double* sq2 = sq1.Power(test, 3, 2);
-	double* sq3 = sq1.Power(test, 3, 3);
-
-	CompareMatrices(test, test);
-	CompareMatrices(sq2, soluMatrix2);
-	CompareMatrices(sq3, soluMatrix3);
-	CompareMatrices(test, test);
-}
-
-void RunPerfMatrix() {
-	time_t t = time(0);   // get time now
-	struct tm * now = localtime(&t);
-	std::string str;
-	str.append("SquareMatrix_run_DynMatrixStaPower");
-	std::ostringstream buf;
-	buf << str << (now->tm_year + 1900);
-	buf << std::setfill('0') << std::setw(2) << now->tm_mon;
-	buf << std::setfill('0') << std::setw(2) << now->tm_mday;
-	buf << std::setfill('0') << std::setw(2) << now->tm_hour;
-	buf << std::setfill('0') << std::setw(2) << now->tm_min;
-	buf << std::setfill('0') << std::setw(2) << now->tm_sec;
-	buf << ".csv";
-	str = buf.str();
-	buf.clear();
-	std::ofstream myfile;
-	myfile.open(str);
-	myfile << "Matrix Size (MxM),Power,Power Execution Time\n";
-
-	try {
-
-		SquareMatrix M = SquareMatrix{};
-		double * m;
-		for (int j = 10000; j > 0; j -= 250) {
-			
-			for (int i = 0; i <= 100; i += 10) {
-
-			m = M.Generate(i);
-
-
-			
-				printf("%ix%i Matrix raised to %i running...\r\n", i, i, j);
-				std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-
-				//Power Matrix... still looks like there might still be a memory leak, but it's (much) better.
-				//Really need to learn best practices for mem management with objects.
-				double * p = M.Power(m, i, j);
-				delete[] p;
-				std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
-
-				auto timespan = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-				myfile << i;
-				myfile << ",";
-				myfile << j;
-				myfile << ",";
-				myfile << timespan;
-				myfile << "\n";
-
-			}
-
-			myfile.flush();
-
-			//delete[] m; Calling this throws an exception... best guess is I'm missing an explicite Copy somewhere.
-		}
-	}
-
-	catch (const std::exception& ex) {
-		printf(ex.what());
-	}
-	catch (const std::string& ex) {
-		printf(ex.data());
-	}
-	catch (...) {
-		printf("Unhandled exception.");
-	}
-
-	myfile.close();
-}
 
 void RunPerfPower() {
 	time_t t = time(0);   // get time now
@@ -269,6 +327,7 @@ void RunPerfPower() {
 				myfile << ",";
 				myfile << timespan;
 				myfile << "\n";
+				myfile.flush();
 
 			}
 
@@ -292,10 +351,6 @@ void RunPerfPower() {
 }
 
 void RunPerfTest() {
-	
-
-	printf("Running Matrix Perf Test: Matrix size is changed while power is static.");
-	RunPerfMatrix();
 
 	//Running Power Perf Test
 	printf("Running Power Perf Test: Matrix size is static while power is changed.");
@@ -303,17 +358,3 @@ void RunPerfTest() {
 	
 }
 
-
-
-void CompareMatrices(double *actual, double* expected) {
-	for (int i = 0; i < 9; i++) {
-		double actVal = *(actual + i);
-		double expVal = *(expected + i);
-		if (actVal == expVal) {
-			printf("[%i]: %f == %f\r\n", i, actVal, expVal);
-		}
-		else {
-			printf("Mismatch at [%i]: Actual: %f, Expected: %f\r\n", i, actVal, expVal);
-		}
-	}
-}
